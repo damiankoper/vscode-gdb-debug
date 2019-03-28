@@ -77,6 +77,10 @@ export class MockDebugSession extends LoggingDebugSession {
 			e.body.column = this.convertDebuggerColumnToClient(column);
 			this.sendEvent(e);
 		});
+		this._runtime.on('outputRaw', (text) => {
+			const e: DebugProtocol.OutputEvent = new OutputEvent(`${text}\n`,'stdout');
+			this.sendEvent(e);
+		})
 		this._runtime.on('end', () => {
 			this.sendEvent(new TerminatedEvent());
 		});
@@ -128,28 +132,29 @@ export class MockDebugSession extends LoggingDebugSession {
 		await this._configurationDone.wait(1000);
 
 		// start the program in the runtime
-		this._runtime.start(args.program, !!args.stopOnEntry);
+		await this._runtime.start(args.program, !!args.stopOnEntry);
 
 		this.sendResponse(response);
 	}
 
-	protected setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments): void {
+	protected async setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments) {
 
 		const path = <string>args.source.path;
 		const clientLines = args.lines || [];
 
 		// clear all breakpoints for this file
-		this._runtime.clearBreakpoints(path);
+		await this._runtime.clearBreakpoints(path);
 
 		// set and verify breakpoint locations
-		const actualBreakpoints = clientLines.map(l => {
-			let { verified, line, id } = this._runtime.setBreakPoint(path, this.convertClientLineToDebugger(l));
+		const actualBreakpoints:DebugProtocol.Breakpoint[] = []
+		for(let i = 0;i<clientLines.length;i++){
+			let { verified, line, id } = await this._runtime.setBreakPoint(path, this.convertClientLineToDebugger(clientLines[i]));
 			const bp = <DebugProtocol.Breakpoint> new Breakpoint(verified, this.convertDebuggerLineToClient(line));
 			bp.id= id;
-			return bp;
-		});
+			actualBreakpoints.push(bp);
+		}
 
-		// send back the actual breakpoint positions
+		// send back the actual breakpoint positions, wait fot gdb
 		response.body = {
 			breakpoints: actualBreakpoints
 		};
@@ -159,11 +164,11 @@ export class MockDebugSession extends LoggingDebugSession {
 	protected threadsRequest(response: DebugProtocol.ThreadsResponse): void {
 
 		// runtime supports now threads so just return a default thread.
-		response.body = {
+		/* response.body = {
 			threads: [
 				new Thread(MockDebugSession.THREAD_ID, "thread 1")
 			]
-		};
+		}; */
 		this.sendResponse(response);
 	}
 
@@ -186,7 +191,7 @@ export class MockDebugSession extends LoggingDebugSession {
 
 		const frameReference = args.frameId;
 		const scopes = new Array<Scope>();
-		scopes.push(new Scope("Local", this._variableHandles.create("local_" + frameReference), false));
+		scopes.push(new Scope("Registers", this._variableHandles.create("local_" + frameReference), false));
 		scopes.push(new Scope("Global", this._variableHandles.create("global_" + frameReference), true));
 
 		response.body = {
@@ -252,37 +257,16 @@ export class MockDebugSession extends LoggingDebugSession {
 		this.sendResponse(response);
 	}
 
-	protected evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments): void {
+	protected async evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments) {
 
-		let reply: string | undefined = undefined;
+		this._runtime.disableRaw();
+		let res = await this._runtime.sendToGdb(args.expression+'\n')
 
-		if (args.context === 'repl') {
-			// 'evaluate' supports to create and delete breakpoints from the 'repl':
-			const matches = /new +([0-9]+)/.exec(args.expression);
-			if (matches && matches.length === 2) {
-				const mbp = this._runtime.setBreakPoint(this._runtime.sourceFile, this.convertClientLineToDebugger(parseInt(matches[1])));
-				const bp = <DebugProtocol.Breakpoint> new Breakpoint(mbp.verified, this.convertDebuggerLineToClient(mbp.line), undefined, this.createSource(this._runtime.sourceFile));
-				bp.id= mbp.id;
-				this.sendEvent(new BreakpointEvent('new', bp));
-				reply = `breakpoint created`;
-			} else {
-				const matches = /del +([0-9]+)/.exec(args.expression);
-				if (matches && matches.length === 2) {
-					const mbp = this._runtime.clearBreakPoint(this._runtime.sourceFile, this.convertClientLineToDebugger(parseInt(matches[1])));
-					if (mbp) {
-						const bp = <DebugProtocol.Breakpoint> new Breakpoint(false);
-						bp.id= mbp.id;
-						this.sendEvent(new BreakpointEvent('removed', bp));
-						reply = `breakpoint deleted`;
-					}
-				}
-			}
-		}
-
-		response.body = {
-			result: reply ? reply : `evaluate(context: '${args.context}', '${args.expression}')`,
+ 		response.body = {
+			result: <string> res,
 			variablesReference: 0
 		};
+
 		this.sendResponse(response);
 	}
 
