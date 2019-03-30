@@ -12,7 +12,7 @@ import { DebugProtocol } from 'vscode-debugprotocol';
 import { basename } from 'path';
 import { MockRuntime, MockBreakpoint } from './mockRuntime';
 const { Subject } = require('await-notify');
-
+import * as _ from 'lodash'
 
 /**
  * This interface describes the mock-debug specific launch attributes
@@ -64,11 +64,12 @@ export class MockDebugSession extends LoggingDebugSession {
 		this._runtime.on('stopOnBreakpoint', () => {
 			this.sendEvent(new StoppedEvent('breakpoint', MockDebugSession.THREAD_ID));
 		});
-		this._runtime.on('stopOnException', () => {
-			this.sendEvent(new StoppedEvent('exception', MockDebugSession.THREAD_ID));
+		this._runtime.on('stopOnException', (data) => {
+			let event = new StoppedEvent('exception', MockDebugSession.THREAD_ID, data)
+			this.sendEvent(event);
 		});
 		this._runtime.on('breakpointValidated', (bp: MockBreakpoint) => {
-			this.sendEvent(new BreakpointEvent('changed', <DebugProtocol.Breakpoint>{ verified: bp.verified, id: bp.id }));
+			this.sendEvent(new BreakpointEvent('changed', <DebugProtocol.Breakpoint>{ verified: bp.verified, id: bp.id, line: bp.line }));
 		});
 		this._runtime.on('output', (text, filePath, line, column) => {
 			const e: DebugProtocol.OutputEvent = new OutputEvent(`${text}\n`);
@@ -78,7 +79,7 @@ export class MockDebugSession extends LoggingDebugSession {
 			this.sendEvent(e);
 		});
 		this._runtime.on('outputRaw', (text) => {
-			const e: DebugProtocol.OutputEvent = new OutputEvent(`${text}\n`,'stdout');
+			const e: DebugProtocol.OutputEvent = new OutputEvent(`${text}\n`, 'stdout');
 			this.sendEvent(e);
 		})
 		this._runtime.on('end', () => {
@@ -97,6 +98,8 @@ export class MockDebugSession extends LoggingDebugSession {
 
 		// the adapter implements the configurationDoneRequest.
 		response.body.supportsConfigurationDoneRequest = true;
+
+		response.body.supportsExceptionInfoRequest = true
 
 		// make VS Code to use 'evaluate' when hovering over source
 		response.body.supportsEvaluateForHovers = true;
@@ -146,13 +149,15 @@ export class MockDebugSession extends LoggingDebugSession {
 		await this._runtime.clearBreakpoints(path);
 
 		// set and verify breakpoint locations
-		const actualBreakpoints:DebugProtocol.Breakpoint[] = []
-		for(let i = 0;i<clientLines.length;i++){
+		const actualBreakpoints: DebugProtocol.Breakpoint[] = []
+		for (let i = 0; i < clientLines.length; i++) {
 			let { verified, line, id } = await this._runtime.setBreakPoint(path, this.convertClientLineToDebugger(clientLines[i]));
-			const bp = <DebugProtocol.Breakpoint> new Breakpoint(verified, this.convertDebuggerLineToClient(line));
-			bp.id= id;
+			const bp = <DebugProtocol.Breakpoint>new Breakpoint(verified, this.convertDebuggerLineToClient(line));
+			bp.id = id;
 			actualBreakpoints.push(bp);
 		}
+
+		await this._runtime.createBreakpoints()
 
 		// send back the actual breakpoint positions, wait fot gdb
 		response.body = {
@@ -164,21 +169,21 @@ export class MockDebugSession extends LoggingDebugSession {
 	protected threadsRequest(response: DebugProtocol.ThreadsResponse): void {
 
 		// runtime supports now threads so just return a default thread.
-		/* response.body = {
+		response.body = {
 			threads: [
 				new Thread(MockDebugSession.THREAD_ID, "thread 1")
 			]
-		}; */
+		};
 		this.sendResponse(response);
 	}
 
-	protected stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments): void {
+	protected async stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments) {
 
 		const startFrame = typeof args.startFrame === 'number' ? args.startFrame : 0;
 		const maxLevels = typeof args.levels === 'number' ? args.levels : 1000;
 		const endFrame = startFrame + maxLevels;
 
-		const stk = this._runtime.stack(startFrame, endFrame);
+		const stk = await this._runtime.stack(startFrame, endFrame);
 
 		response.body = {
 			stackFrames: stk.frames.map(f => new StackFrame(f.index, f.name, this.createSource(f.file), this.convertDebuggerLineToClient(f.line))),
@@ -242,10 +247,10 @@ export class MockDebugSession extends LoggingDebugSession {
 		this.sendResponse(response);
 	}
 
-	protected reverseContinueRequest(response: DebugProtocol.ReverseContinueResponse, args: DebugProtocol.ReverseContinueArguments) : void {
-		this._runtime.continue(true);
+	protected reverseContinueRequest(response: DebugProtocol.ReverseContinueResponse, args: DebugProtocol.ReverseContinueArguments): void {
+		this._runtime.continue();
 		this.sendResponse(response);
- 	}
+	}
 
 	protected nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments): void {
 		this._runtime.step();
@@ -253,17 +258,22 @@ export class MockDebugSession extends LoggingDebugSession {
 	}
 
 	protected stepBackRequest(response: DebugProtocol.StepBackResponse, args: DebugProtocol.StepBackArguments): void {
-		this._runtime.step(true);
+		this._runtime.step();
+		this.sendResponse(response);
+	}
+
+	protected stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments): void {
+		this._runtime.stepIn();
 		this.sendResponse(response);
 	}
 
 	protected async evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments) {
 
 		this._runtime.disableRaw();
-		let res = await this._runtime.sendToGdb(args.expression+'\n')
+		let res = await this._runtime.getGdb().send(args.expression + '\n')
 
- 		response.body = {
-			result: <string> res,
+		response.body = {
+			result: <string>res,
 			variablesReference: 0
 		};
 
@@ -274,5 +284,10 @@ export class MockDebugSession extends LoggingDebugSession {
 
 	private createSource(filePath: string): Source {
 		return new Source(basename(filePath), this.convertDebuggerPathToClient(filePath), undefined, undefined, 'mock-adapter-data');
+	}
+
+	protected async  exceptionInfoRequest(response: DebugProtocol.ExceptionInfoResponse, args: DebugProtocol.ExceptionInfoArguments) {
+		// todo: does not work
+		this.sendResponse(response);
 	}
 }

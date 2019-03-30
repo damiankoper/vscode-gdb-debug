@@ -39,7 +39,10 @@
 		"publish": "vsce publish"
 	},
 	"dependencies": {
+		"@types/lodash": "^4.14.123",
 		"await-notify": "1.0.1",
+		"gdb-mi-parser": "^1.5.0",
+		"lodash": "^4.17.11",
 		"vscode-debugadapter": "1.33.0"
 	},
 	"devDependencies": {
