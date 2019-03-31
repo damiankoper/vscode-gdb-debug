@@ -10,7 +10,7 @@
 	},
 	"license": "MIT",
 	"keywords": [
-		"multi-root ready gdb assembly gas"
+		"multi-root ready", "gdb", "assembly", "gas"
 	],
 	"engines": {
 		"vscode": "^1.30.0-insider",
@@ -63,70 +63,63 @@
 		"onCommand:extension.gdb-debug.getProgramName"
 	],
 	"contributes": {
-		"breakpoints": [
-			{
+		"breakpoints": [{
 				"language": "gas"
 			},
 			{
 				"language": "asm"
 			}
 		],
-		"debuggers": [
-			{
-				"type": "gdb",
-				"label": "GDB Debug",
-				"program": "./out/debugAdapter.js",
-				"runtime": "node",
-				"configurationAttributes": {
-					"launch": {
-						"required": [
-							"program"
-						],
-						"properties": {
-							"program": {
-								"type": "string",
-								"description": "Full path to program executable.",
-								"default": "${workspaceFolder}/${command:AskForProgramName}"
-							},
-							"stopOnEntry": {
-								"type": "boolean",
-								"description": "Automatically stop after launch.",
-								"default": true
-							},
-							"trace": {
-								"type": "boolean",
-								"description": "Enable logging of the Debug Adapter Protocol.",
-								"default": true
-							}
+		"debuggers": [{
+			"type": "gdb",
+			"label": "GDB Debug",
+			"program": "./out/debugAdapter.js",
+			"runtime": "node",
+			"configurationAttributes": {
+				"launch": {
+					"required": [
+						"program"
+					],
+					"properties": {
+						"program": {
+							"type": "string",
+							"description": "Full path to program executable.",
+							"default": "${workspaceFolder}/${command:AskForProgramName}"
+						},
+						"stopOnEntry": {
+							"type": "boolean",
+							"description": "Automatically stop after launch.",
+							"default": true
+						},
+						"trace": {
+							"type": "boolean",
+							"description": "Enable logging of the Debug Adapter Protocol.",
+							"default": true
 						}
 					}
-				},
-				"initialConfigurations": [
-					{
-						"type": "gdb",
-						"request": "launch",
-						"name": "GDB",
-						"program": "${workspaceFolder}/${command:AskForProgramName}",
-						"stopOnEntry": true
-					}
-				],
-				"configurationSnippets": [
-					{
-						"label": "GDB Debug: Launch",
-						"description": "A new configuration for 'debugging' a user selected executable.",
-						"body": {
-							"type": "gdb",
-							"request": "launch",
-							"name": "GDB",
-							"program": "^\"\\${workspaceFolder}/\\${command:AskForProgramName}\"",
-							"stopOnEntry": true
-						}
-					}
-				],
-				"variables": {
-					"AskForProgramName": "extension.gdb-debug.getProgramName"
 				}
+			},
+			"initialConfigurations": [{
+				"type": "gdb",
+				"request": "launch",
+				"name": "GDB",
+				"program": "${workspaceFolder}/${command:AskForProgramName}",
+				"stopOnEntry": true
+			}],
+			"configurationSnippets": [{
+				"label": "GDB Debug: Launch",
+				"description": "A new configuration for 'debugging' a user selected executable.",
+				"body": {
+					"type": "gdb",
+					"request": "launch",
+					"name": "GDB",
+					"program": "^\"\\${workspaceFolder}/\\${command:AskForProgramName}\"",
+					"stopOnEntry": true
+				}
+			}],
+			"variables": {
+				"AskForProgramName": "extension.gdb-debug.getProgramName"
 			}
-		]
+		}]
 	}
 }
