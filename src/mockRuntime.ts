@@ -210,13 +210,16 @@ export class MockRuntime extends EventEmitter {
 					result += `${row.addr}: ${cols} \n`
 				})
 			}
-			return result
+			return result || "error"
 		}
 		// if print expresion
 		else if (exp.trim().startsWith('-p')) {
 			exp = exp.trim().slice(2).trim()
 			let record: any = await this.gdb.send(`-data-evaluate-expression "${exp}"\n`)
-			return record.resultRecord.result.value;
+			if (record.resultRecord.class === 'done') {
+				return record.resultRecord.result.value;
+			}
+			return 'error'
 		}
 		// if raw
 		else {
