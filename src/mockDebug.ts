@@ -49,8 +49,8 @@ export class MockDebugSession extends LoggingDebugSession {
 		super("mock-debug.txt");
 
 		// this debugger uses zero-based lines and columns
-		this.setDebuggerLinesStartAt1(false);
-		this.setDebuggerColumnsStartAt1(false);
+		this.setDebuggerLinesStartAt1(true);
+		this.setDebuggerColumnsStartAt1(true);
 
 		this._runtime = new MockRuntime();
 
@@ -157,7 +157,8 @@ export class MockDebugSession extends LoggingDebugSession {
 			actualBreakpoints.push(bp);
 		}
 
-		await this._runtime.createBreakpoints()
+		if (this._runtime.isRunning())
+			this._runtime.createBreakpoints();
 
 		// send back the actual breakpoint positions, wait fot gdb
 		response.body = {

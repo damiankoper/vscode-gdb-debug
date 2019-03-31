@@ -3,7 +3,7 @@
 	"displayName": "GDB Debug",
 	"version": "1.0.0",
 	"publisher": "DamianKoper",
-	"description": "Starter extension for developing debug adapters for VS Code.",
+	"description": "GDB Debug extension to make OiAK easier.",
 	"author": {
 		"name": "Damian Koper",
 		"email": "kopernickk@gmail.com"

@@ -55,15 +55,17 @@ export default class Gdb extends EventEmitter {
 						this.emit('dataStream', str)
 						if (str.includes('No more reverse-execution history'))
 							this.emit('end')
+						if (str.includes('The next instruction is syscall exit'))
+							this.emit('end')
 					});
 					if (parsed.resultRecord && parsed.resultRecord.type === "stream")
 						this.emit('dataStream', parsed.resultRecord.result)
 
 					parsed.outOfBandRecords.forEach((record: any) => {
+						//console.log(record);
+
 						switch (record.class) {
 							case 'breakpoint-created':
-								this.emit('breakpointModified', record)
-								break;
 							case 'breakpoint-modified':
 								this.emit('breakpointModified', record)
 								break;
