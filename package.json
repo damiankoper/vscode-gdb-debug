@@ -2,7 +2,7 @@
 	"name": "gdb-debug",
 	"displayName": "GDB Debug",
 	"version": "0.29.0",
-	"publisher": "damiankoper",
+	"publisher": "DamianKoper",
 	"description": "Starter extension for developing debug adapters for VS Code.",
 	"author": {
 		"name": "Damian Koper",
