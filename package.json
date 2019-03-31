@@ -1,32 +1,32 @@
 {
-	"name": "mock-debug",
-	"displayName": "Mock Debug",
+	"name": "gdb-debug",
+	"displayName": "GDB Debug",
 	"version": "0.29.0",
-	"publisher": "andreweinand",
+	"publisher": "damiankoper",
 	"description": "Starter extension for developing debug adapters for VS Code.",
 	"author": {
-		"name": "Microsoft Corporation",
-		"email": "aweinand@microsoft.com"
+		"name": "Damian Koper",
+		"email": "kopernickk@gmail.com"
 	},
 	"license": "MIT",
 	"keywords": [
-		"multi-root ready"
+		"multi-root ready gdb assembly gas"
 	],
 	"engines": {
 		"vscode": "^1.30.0-insider",
 		"node": "^8.9.3"
 	},
-	"icon": "images/mock-debug-icon.png",
+	"icon": "images/gdb-debug-icon.png",
 	"categories": [
 		"Debuggers"
 	],
-	"private": true,
+	"private": false,
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/Microsoft/vscode-mock-debug.git"
+		"url": "https://github.com/damiankoper/vscode-gdb-debug.git"
 	},
 	"bugs": {
-		"url": "https://github.com/Microsoft/vscode-mock-debug/issues"
+		"url": "https://github.com/damiankoper/vscode-gdb-debug/issues"
 	},
 	"scripts": {
 		"prepublish": "tsc -p ./src",
@@ -39,7 +39,9 @@
 		"publish": "vsce publish"
 	},
 	"dependencies": {
+		"@types/async": "^2.4.1",
 		"@types/lodash": "^4.14.123",
+		"async": "^2.6.2",
 		"await-notify": "1.0.1",
 		"gdb-mi-parser": "^1.5.0",
 		"lodash": "^4.17.11",
@@ -58,18 +60,21 @@
 	"main": "./out/extension",
 	"activationEvents": [
 		"onDebug",
-		"onCommand:extension.mock-debug.getProgramName"
+		"onCommand:extension.gdb-debug.getProgramName"
 	],
 	"contributes": {
 		"breakpoints": [
 			{
 				"language": "gas"
+			},
+			{
+				"language": "asm"
 			}
 		],
 		"debuggers": [
 			{
-				"type": "mock",
-				"label": "Mock Debug",
+				"type": "gdb",
+				"label": "GDB Debug",
 				"program": "./out/debugAdapter.js",
 				"runtime": "node",
 				"configurationAttributes": {
@@ -98,28 +103,28 @@
 				},
 				"initialConfigurations": [
 					{
-						"type": "mock",
+						"type": "gdb",
 						"request": "launch",
-						"name": "Ask for file name",
+						"name": "GDB",
 						"program": "${workspaceFolder}/${command:AskForProgramName}",
 						"stopOnEntry": true
 					}
 				],
 				"configurationSnippets": [
 					{
-						"label": "Mock Debug: Launch",
-						"description": "A new configuration for 'debugging' a user selected markdown file.",
+						"label": "GDB Debug: Launch",
+						"description": "A new configuration for 'debugging' a user selected executable.",
 						"body": {
-							"type": "mock",
+							"type": "gdb",
 							"request": "launch",
-							"name": "Ask for file name",
+							"name": "GDB",
 							"program": "^\"\\${workspaceFolder}/\\${command:AskForProgramName}\"",
 							"stopOnEntry": true
 						}
 					}
 				],
 				"variables": {
-					"AskForProgramName": "extension.mock-debug.getProgramName"
+					"AskForProgramName": "extension.gdb-debug.getProgramName"
 				}
 			}
 		]

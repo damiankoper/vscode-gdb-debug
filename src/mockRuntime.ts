@@ -49,6 +49,7 @@ export class MockRuntime extends EventEmitter {
 		})
 
 		this.gdb.on('breakpointModified', (record: any) => {
+			//console.log(record.class, record.result.bkpt.fullname)
 			record = record.result.bkpt
 			let breakpoints = this._breakPoints.get(record.fullname)
 			let bp: MockBreakpoint = <MockBreakpoint>_.find(breakpoints, (bp: MockBreakpoint) => bp.id == record.number)
@@ -60,7 +61,7 @@ export class MockRuntime extends EventEmitter {
 		})
 
 		this.gdb.on('stopped', (record: any) => {
-			console.log(record.result.reason)
+			//console.log(record.result.reason)
 			switch (record.result.reason) {
 				case 'breakpoint-hit':
 					this.sendEvent('stopOnBreakpoint')
@@ -80,23 +81,33 @@ export class MockRuntime extends EventEmitter {
 					break;
 			}
 		})
+
+		this.gdb.on('end', () => {
+			this.sendEvent('end')
+		})
 	}
 
 	public async start(program: string, stopOnEntry: boolean) {
+		await this.gdb.initRegisters();
 
 		await this.gdb.send(`file ${program}\n`)
 		await this.createBreakpoints();
 
 		if (stopOnEntry) {
-			await this.gdb.send(`break _start\n`)
+			await this.gdb.send(`-break-insert _start\n`)
 		}
-
-		setTimeout(async () => {
-			await this.gdb.send(`run\n`)
-			this.sendEvent('stopOnEntry')
-		}, 0)
+		await new Promise(resolve =>
+			setTimeout(async () => {
+				await this.gdb.send(`run\n`)
+				await this.gdb.send(`record\n`) //send record to init
+				resolve()
+			}, 10)
+		)
 	}
 
+	public async reverse() {
+		await this.gdb.send(`reverse-step\n`)
+	}
 
 	public async continue() {
 		await this.gdb.send(`continue\n`)
@@ -143,7 +154,7 @@ export class MockRuntime extends EventEmitter {
 	public async createBreakpoints() {
 		for (let [path, bps] of this._breakPoints) {
 			for (const bp of bps) {
-				await this.gdb.send(`break ${path}:${bp.line + 1}\n`)
+				await this.gdb.send(`-break-insert ${path}:${bp.line + 1}\n`)
 			}
 		}
 
@@ -153,7 +164,7 @@ export class MockRuntime extends EventEmitter {
 		let fileBreakpoints = this._breakPoints.get(path)
 		if (fileBreakpoints) {
 			for (const bp of fileBreakpoints) {
-				await this.gdb.send(`clear ${path}:${bp.line + 1}\n`)
+				await this.gdb.send(`-break-delete ${bp.id}\n`)
 			}
 		}
 		this._breakPoints.delete(path);
@@ -165,14 +176,46 @@ export class MockRuntime extends EventEmitter {
 		});
 	}
 
+	public async evaluateExpression(args: DebugProtocol.EvaluateArguments) {
+		let exp = args.expression
+		// if register
+		if (this.gdb.isRegister(exp)) {
+			return (await this.gdb.getRegisterValues([exp]))[exp]
+		}
+		// if examine memory
+		else if (exp.trim().startsWith('-x')) {
+			exp = exp.trim().slice(2).trim();
+			let result = ""
+			let record: any = await this.gdb.send(`-data-read-memory ${exp}\n`)
+			if (record.resultRecord.class === 'done') {
+				record.resultRecord.result.memory.forEach(row => {
+					let cols = row.data.join(' ')
+					result += `${row.addr}: ${cols}`
+				})
+			}
+			console.log(result);
+			return result
+		}
+		// if print expresion
+		else if (exp.trim().startsWith('-p')) {
+			exp = exp.trim().slice(2).trim()
+			let record: any = await this.gdb.send(`-data-evaluate-expression "${exp}"\n`)
+			return record.resultRecord.result.value;
+		}
+		// if raw
+		else {
+			return await this.gdb.sendGetOutputString(`${exp}\n`)
+		}
+	}
+
 	// todo: useless for now
 	public getLastException() {
 		this.lastExceptionResult;
 		return {
-			exceptionId: ""+this._exceptionId++,
-			breakMode:<DebugProtocol.ExceptionBreakMode>'unhandled',
+			exceptionId: "" + this._exceptionId++,
+			breakMode: <DebugProtocol.ExceptionBreakMode>'unhandled',
 			description: this.lastExceptionResult['signal-name'],
-			 details: {
+			details: {
 				message: this.lastExceptionResult['signal-meaning'] + '. Core ' + this.lastExceptionResult['core'] + '.'
 			}
 		}

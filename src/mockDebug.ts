@@ -196,8 +196,8 @@ export class MockDebugSession extends LoggingDebugSession {
 
 		const frameReference = args.frameId;
 		const scopes = new Array<Scope>();
-		scopes.push(new Scope("Registers", this._variableHandles.create("local_" + frameReference), false));
-		scopes.push(new Scope("Global", this._variableHandles.create("global_" + frameReference), true));
+		scopes.push(new Scope("Registers", this._variableHandles.create("registers_" + frameReference), false));
+		//scopes.push(new Scope("Global", this._variableHandles.create("global_" + frameReference), true));
 
 		response.body = {
 			scopes: scopes
@@ -205,35 +205,21 @@ export class MockDebugSession extends LoggingDebugSession {
 		this.sendResponse(response);
 	}
 
-	protected variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments): void {
+	protected async variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments) {
+
 
 		const variables = new Array<DebugProtocol.Variable>();
 		const id = this._variableHandles.get(args.variablesReference);
-		if (id !== null) {
-			variables.push({
-				name: id + "_i",
-				type: "integer",
-				value: "123",
-				variablesReference: 0
-			});
-			variables.push({
-				name: id + "_f",
-				type: "float",
-				value: "3.14",
-				variablesReference: 0
-			});
-			variables.push({
-				name: id + "_s",
-				type: "string",
-				value: "hello world",
-				variablesReference: 0
-			});
-			variables.push({
-				name: id + "_o",
-				type: "object",
-				value: "Object",
-				variablesReference: this._variableHandles.create("object_")
-			});
+
+		if (id.startsWith('registers')) {
+			let values: any = await this._runtime.getGdb().getRegisterValues();
+			for (var name in values) {
+				variables.push({
+					name: name,
+					value: values[name],
+					variablesReference: 0
+				});
+			}
 		}
 
 		response.body = {
@@ -248,7 +234,7 @@ export class MockDebugSession extends LoggingDebugSession {
 	}
 
 	protected reverseContinueRequest(response: DebugProtocol.ReverseContinueResponse, args: DebugProtocol.ReverseContinueArguments): void {
-		this._runtime.continue();
+		this._runtime.reverse();
 		this.sendResponse(response);
 	}
 
@@ -270,13 +256,13 @@ export class MockDebugSession extends LoggingDebugSession {
 	protected async evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments) {
 
 		this._runtime.disableRaw();
-		let res = await this._runtime.getGdb().send(args.expression + '\n')
-
-		response.body = {
-			result: <string>res,
-			variablesReference: 0
-		};
-
+		let res = await this._runtime.evaluateExpression(args)
+		if (res) {
+			response.body = {
+				result: res,
+				variablesReference: 0
+			};
+		}
 		this.sendResponse(response);
 	}
 
@@ -286,7 +272,7 @@ export class MockDebugSession extends LoggingDebugSession {
 		return new Source(basename(filePath), this.convertDebuggerPathToClient(filePath), undefined, undefined, 'mock-adapter-data');
 	}
 
-	protected async  exceptionInfoRequest(response: DebugProtocol.ExceptionInfoResponse, args: DebugProtocol.ExceptionInfoArguments) {
+	protected async exceptionInfoRequest(response: DebugProtocol.ExceptionInfoResponse, args: DebugProtocol.ExceptionInfoArguments) {
 		// todo: does not work
 		this.sendResponse(response);
 	}

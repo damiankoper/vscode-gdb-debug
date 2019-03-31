@@ -3,6 +3,7 @@ import { EventEmitter } from 'events';
 import * as stream from 'stream';
 import * as parseGdbMiOut from 'gdb-mi-parser'
 import * as _ from 'lodash'
+import * as async from 'async'
 export default class Gdb extends EventEmitter {
 	private gdb: childProcess.ChildProcess;
 
@@ -11,6 +12,14 @@ export default class Gdb extends EventEmitter {
 
 	public disableRaw = () => this.rawDisabled = true;
 	public rawDisabled = false;
+
+	private registers: string[] = [];
+
+	private queue = async.queue(async (command: string, callback: (result: string) => void) => {
+		this.gdb.stdin.write(command)
+		let resp = await this.getGdbResponse()
+		callback(resp)
+	}, 1);
 
 	constructor() {
 		super()
@@ -44,6 +53,8 @@ export default class Gdb extends EventEmitter {
 						}
 					})).filter((x: string | undefined) => x).forEach((str: string) => {
 						this.emit('dataStream', str)
+						if (str.includes('No more reverse-execution history'))
+							this.emit('end')
 					});
 					if (parsed.resultRecord && parsed.resultRecord.type === "stream")
 						this.emit('dataStream', parsed.resultRecord.result)
@@ -67,8 +78,20 @@ export default class Gdb extends EventEmitter {
 	}
 
 	public async send(command: string): Promise<string> {
-		this.gdb.stdin.write(command)
-		return await this.getGdbResponse();
+		return new Promise((resolve: (val: string) => void) => {
+			this.queue.push(command, async (resp: string) => {
+				resolve(resp);
+			})
+		})
+	}
+
+	public async sendGetOutputString(command: string): Promise<string> {
+		let record: any = await this.send(command)
+		return record.outOfBandRecords.map(((x: any) => {
+			if (x.recordType === 'stream' && x.outputType === 'console') {
+				return x.result
+			}
+		})).filter((x: string | undefined) => x).join('')
 	}
 
 	private async getGdbResponse(): Promise<any> {
@@ -78,5 +101,33 @@ export default class Gdb extends EventEmitter {
 				res(parsed)
 			})
 		})
+	}
+
+	public async initRegisters() {
+		let resultRecord: any = await this.send('-data-list-register-names\n')
+		if (resultRecord.resultRecord && resultRecord.resultRecord.class === 'done')
+			this.registers = resultRecord.resultRecord.result['register-names']
+	}
+
+	public async getRegisterValues(registers: string[] = []) {
+		if (registers.length === 0) {
+			registers = this.registers.filter(r => r)
+		}
+		let numbers: number[] = [];
+		numbers = registers.map(reg => {
+			return this.registers.indexOf(reg);
+		});
+		let result: any = {}
+		let values: any = await this.send(`-data-list-register-values x ${numbers.join(' ')}\n`)
+		if (values && values.resultRecord && values.resultRecord.class === 'done')
+			values.resultRecord.result['register-values'].forEach(data => {
+				result[this.registers[data.number]] = data.value
+			});
+
+		return result;
+	}
+
+	public isRegister(reg: string) {
+		return this.registers.find((v) => v === reg)
 	}
 }
