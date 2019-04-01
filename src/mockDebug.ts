@@ -158,7 +158,7 @@ export class MockDebugSession extends LoggingDebugSession {
 		}
 
 		if (this._runtime.isRunning())
-			this._runtime.createBreakpoints();
+			await this._runtime.createBreakpoints(path);
 
 		// send back the actual breakpoint positions, wait fot gdb
 		response.body = {

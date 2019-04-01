@@ -4,6 +4,7 @@ import * as stream from 'stream';
 import * as parseGdbMiOut from 'gdb-mi-parser'
 import * as _ from 'lodash'
 import * as async from 'async'
+
 export default class Gdb extends EventEmitter {
 	private gdb: childProcess.ChildProcess;
 
@@ -40,43 +41,39 @@ export default class Gdb extends EventEmitter {
 		this.gdb.stdout.pipe(this.stdOutErrPassThrough_2)
 		this.gdb.stderr.pipe(this.stdOutErrPassThrough_2)
 
+
 		this.stdOutErrPassThrough_2.on('data', (data: string) => {
-			let splitted = data.split(/(\(gdb\))/g)
-			if (splitted)
-				splitted.forEach(chunk => {
-					let parsed = parseGdbMiOut(chunk)
-					parsed.outOfBandRecords.map(((x: any) => {
-						if (x.recordType === 'stream') {
-							if (x.outputType === 'log')
-								return '(gdb) ' + x.result
-							return x.result
-						}
-					})).filter((x: string | undefined) => x).forEach((str: string) => {
-						this.emit('dataStream', str)
-						if (str.includes('No more reverse-execution history'))
-							this.emit('end')
-						if (str.includes('The next instruction is syscall exit'))
-							this.emit('end')
-					});
-					if (parsed.resultRecord && parsed.resultRecord.type === "stream")
-						this.emit('dataStream', parsed.resultRecord.result)
 
-					parsed.outOfBandRecords.forEach((record: any) => {
-						//console.log(record);
+			// trick to somehow filter program output - working on tty topic
+			this.emit('dataStream', data.split(/\^|\*|\=|\~"|\&"|\(gdb\)/g)[0])
 
-						switch (record.class) {
-							case 'breakpoint-created':
-							case 'breakpoint-modified':
-								this.emit('breakpointModified', record)
-								break;
-							case 'stopped':
-								this.emit('stopped', record)
-								break;
-							// and more to come
-						}
-					})
-				});
-		})
+			let parsed = parseGdbMiOut(data)
+			parsed.outOfBandRecords.map(((x: any) => {
+				return typeof (x.result) === 'string' ? x.result : JSON.stringify(x.result)
+
+			})).filter((x: string | undefined) => x).forEach((str: string) => {
+				// this.emit('dataStream', str)
+				if (str.includes('No more reverse-execution history'))
+					this.emit('end')
+				if (str.includes('The next instruction is syscall exit'))
+					this.emit('end')
+			});
+			/* if (parsed.outOfBandRecords.length)
+				this.emit('dataStream', JSON.stringify(parsed)) */
+
+			parsed.outOfBandRecords.forEach((record: any) => {
+				switch (record.class) {
+					case 'breakpoint-created':
+					case 'breakpoint-modified':
+						this.emit('breakpointModified', record)
+						break;
+					case 'stopped':
+						this.emit('stopped', record)
+						break;
+					// and more to come
+				}
+			})
+		});
 	}
 
 	public async send(command: string): Promise<string> {
@@ -87,22 +84,23 @@ export default class Gdb extends EventEmitter {
 		})
 	}
 
-	public async sendGetOutputString(command: string): Promise<string> {
-		let record: any = await this.send(command)
-		return record.outOfBandRecords.map(((x: any) => {
-			if (x.recordType === 'stream' && x.outputType === 'console') {
-				return x.result
-			}
-		})).filter((x: string | undefined) => x).join('')
-	}
 
 	private async getGdbResponse(): Promise<any> {
 		return new Promise((res, rev) => {
-			this.stdOutErrPassThrough_1.once('data', (data: string) => {
-				let parsed = parseGdbMiOut(data)
-				res(parsed)
-			})
+			let callback = (data: string) => {
+				let parsed: any = parseGdbMiOut(data)
+				if (parsed.resultRecord) {
+					this.stdOutErrPassThrough_1.removeListener('data', callback)
+					res(parsed)
+				}
+
+			}
+			this.stdOutErrPassThrough_1.on('data', callback)
 		})
+	}
+
+	public sendRaw(command: string) {
+		this.gdb.stdin.write(command)
 	}
 
 	public async initRegisters() {

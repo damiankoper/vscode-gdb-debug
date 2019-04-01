@@ -58,18 +58,17 @@ export class MockRuntime extends EventEmitter {
 		})
 
 		this.gdb.on('stopped', (record: any) => {
-			//console.log(record.result.reason)
 			switch (record.result.reason) {
+
 				case 'breakpoint-hit':
 					this.sendEvent('stopOnBreakpoint')
 					break;
+				case 'syscall-entry':
 				case 'end-stepping-range':
 					this.sendEvent('stopOnStep')
 					break;
-				case 'exited-normally':
-					this.sendEvent('end')
-					break;
 				case 'exited-signalled':
+				case 'exited-normally':
 					this.sendEvent('end')
 					break;
 				case 'signal-received':
@@ -85,39 +84,35 @@ export class MockRuntime extends EventEmitter {
 	}
 
 	public async start(program: string, stopOnEntry: boolean) {
-		await this.gdb.send(``);
+
 		await this.gdb.initRegisters();
-		await this.gdb.send(`file ${program}\n`)
-		await this.gdb.send(``);
-		if (stopOnEntry) {
-			this._breakpointId++
-			await this.gdb.send('-break-insert _start\n')
-		}
+		await this.gdb.send(`-file-exec-and-symbols ${program}\n`)
+		//await this.gdb.send(`-interpreter-exec console "catch syscall"\n`)
 		await this.createBreakpoints();
 
-
-		await this.gdb.send(`run\n`)
-		await this.gdb.send(`record\n`) //send record to init
-
+		if (stopOnEntry)
+			await this.gdb.send(`-interpreter-exec console "starti"\n`)
+		else
+			await this.gdb.send(`-exec-run\n`)
+		//await this.gdb.send(`record\n`)
 		this.running = true
-
 		return
 	}
 
 	public async reverse() {
-		await this.gdb.send(`reverse-step\n`)
+		await this.gdb.send(`-exec-step --reverse\n`)
 	}
 
 	public async continue() {
-		await this.gdb.send(`continue\n`)
+		await this.gdb.send(`-exec-continue\n`)
 	}
 
 	public async step() {
-		await this.gdb.send(`next\n`)
+		await this.gdb.send(`-exec-next\n`)
 	}
 
 	public async stepIn() {
-		await this.gdb.send(`step\n`)
+		await this.gdb.send(`-exec-step\n`)
 	}
 
 	public async stack(startFrame: number, endFrame: number) {
@@ -150,47 +145,66 @@ export class MockRuntime extends EventEmitter {
 		return bp;
 	}
 
-	public async createBreakpoints() {
-		for (let [path, bps] of this._breakPoints) {
+	public async createBreakpoints(path: any = undefined) {
+
+		let bps = this._breakPoints.get(path);
+		if (bps)
 			for (const bp of bps) {
 				let record: any = await this.gdb.send(`-break-insert ${path}${bp.line ? ':' + (bp.line) : ''}\n`)
-				this.verifyBreakpoint(record.resultRecord)
+				if (record.resultRecord.class === 'error') {
+					this._breakpointId--
+				} else {
+					this.verifyBreakpoint(record.resultRecord)
+				}
 			}
-		}
-
+		else
+			for (let [path, bps] of this._breakPoints) {
+				for (const bp of bps) {
+					let record: any = await this.gdb.send(`-break-insert ${path}${bp.line ? ':' + (bp.line) : ''}\n`)
+					if (record.resultRecord.class === 'error') {
+						this._breakpointId--
+					} else {
+						this.verifyBreakpoint(record.resultRecord)
+					}
+				}
+			}
+		return
 	}
 
 	public async clearBreakpoints(path: string) {
-		let fileBreakpoints = this._breakPoints.get(path)
-		if (fileBreakpoints) {
-			for (const bp of fileBreakpoints) {
-				let record = await this.gdb.send(`-break-delete ${bp.id}\n`)
-				record;
-			}
+		let record: any = await this.gdb.send(`-break-list\n`)
+		let numbers = record.resultRecord.result.BreakpointTable.body.map(bkpt => {
+			if (bkpt.fullname == path)
+				return parseInt(bkpt.number)
+		}).filter(x => x)
+
+		for (const num of numbers) {
+			await this.gdb.send(`-break-delete ${num}\n`)
 		}
+
+
 		this._breakPoints.delete(path);
+		return
 	}
 
 	public verifyBreakpoint(record: any) {
-		if (record && record.class !== 'error' && Object.keys(record.result).length) {
-			record = record.result.bkpt
-			let breakpoints = this._breakPoints.get(record.fullname)
-			let bp: MockBreakpoint = <MockBreakpoint>_.find(breakpoints, (bp: MockBreakpoint) => bp.id == record.number)
-			if (bp) {
-				bp.line = parseInt(record.line)
-				setTimeout(() => {
-					bp.verified = true
-					this.sendEvent('breakpointValidated', bp)
-				}, 100);
-
-			}
-		}
+		record = record.result.bkpt
+		setTimeout(() => {
+			this.sendEvent('breakpointValidated', {
+				verified: true,
+				line: parseInt(record.line),
+				id: parseInt(record.number)
+			})
+		}, 250);
 	}
 
 	private async sendEvent(event: string, ...args: any[]) {
-		await setImmediate(_ => {
-			this.emit(event, ...args);
-		});
+		return new Promise(res => {
+			setImmediate(_ => {
+				this.emit(event, ...args);
+				res();
+			});
+		})
 	}
 
 	public async evaluateExpression(args: DebugProtocol.EvaluateArguments) {
@@ -223,7 +237,7 @@ export class MockRuntime extends EventEmitter {
 		}
 		// if raw
 		else {
-			return await this.gdb.sendGetOutputString(`${exp}\n`)
+			return this.gdb.sendRaw(`${exp}\n`)
 		}
 	}
 
