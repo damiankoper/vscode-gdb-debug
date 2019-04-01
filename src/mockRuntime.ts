@@ -237,7 +237,8 @@ export class MockRuntime extends EventEmitter {
 		}
 		// if raw
 		else {
-			return this.gdb.sendRaw(`${exp}\n`)
+			this.gdb.sendRaw(`${exp}\n`)
+			return "Output:"
 		}
 	}
 

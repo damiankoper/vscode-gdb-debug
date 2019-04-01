@@ -49,10 +49,12 @@ export default class Gdb extends EventEmitter {
 
 			let parsed = parseGdbMiOut(data)
 			parsed.outOfBandRecords.map(((x: any) => {
-				return typeof (x.result) === 'string' ? x.result : JSON.stringify(x.result)
-
+				if (x.recordType === 'stream') {
+					if (x.outputType === 'console')
+					return x.result
+				}
 			})).filter((x: string | undefined) => x).forEach((str: string) => {
-				// this.emit('dataStream', str)
+				this.emit('dataStream', str)
 				if (str.includes('No more reverse-execution history'))
 					this.emit('end')
 				if (str.includes('The next instruction is syscall exit'))
