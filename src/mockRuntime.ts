@@ -79,22 +79,29 @@ export class MockRuntime extends EventEmitter {
 		})
 
 		this.gdb.on('end', () => {
-			this.sendEvent('end')
+			setTimeout(() => {
+				this.sendEvent('end')
+			}, 1000);
 		})
 	}
 
-	public async start(program: string, stopOnEntry: boolean) {
+	public async start(program: string, stopOnEntry: boolean, args?: string) {
 
 		await this.gdb.initRegisters();
 		await this.gdb.send(`-file-exec-and-symbols ${program}\n`)
 		//await this.gdb.send(`-interpreter-exec console "catch syscall"\n`)
 		await this.createBreakpoints();
 
+		if (args)
+			await this.gdb.send(`-exec-arguments ${args}\n`)
+
 		if (stopOnEntry)
 			await this.gdb.send(`-interpreter-exec console "starti"\n`)
 		else
 			await this.gdb.send(`-exec-run\n`)
+
 		//await this.gdb.send(`record\n`)
+
 		this.running = true
 		return
 	}

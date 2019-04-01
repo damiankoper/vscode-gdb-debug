@@ -27,6 +27,8 @@ interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
 	stopOnEntry?: boolean;
 	/** enable logging the Debug Adapter Protocol */
 	trace?: boolean;
+
+	arguments?: string;
 }
 
 export class MockDebugSession extends LoggingDebugSession {
@@ -135,7 +137,7 @@ export class MockDebugSession extends LoggingDebugSession {
 		await this._configurationDone.wait(1000);
 
 		// start the program in the runtime
-		await this._runtime.start(args.program, !!args.stopOnEntry);
+		await this._runtime.start(args.program, !!args.stopOnEntry, args.arguments);
 
 		this.sendResponse(response);
 	}
