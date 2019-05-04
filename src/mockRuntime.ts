@@ -231,6 +231,9 @@ export class MockRuntime extends EventEmitter {
 					result += `${row.addr}: ${cols} \n`
 				})
 			}
+			else{
+				result = record.resultRecord.result.msg
+			}
 			return result || "error"
 		}
 		// if print expresion

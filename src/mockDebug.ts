@@ -81,8 +81,10 @@ export class MockDebugSession extends LoggingDebugSession {
 			this.sendEvent(e);
 		});
 		this._runtime.on('outputRaw', (text) => {
-			const e: DebugProtocol.OutputEvent = new OutputEvent(`${text}\n`, 'stdout');
-			this.sendEvent(e);
+			if (text != "") {
+				const e: DebugProtocol.OutputEvent = new OutputEvent(`${text}\n`, 'stdout');
+				this.sendEvent(e);
+			}
 		})
 		this._runtime.on('end', () => {
 			this.sendEvent(new TerminatedEvent());
